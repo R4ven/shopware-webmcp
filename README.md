@@ -154,10 +154,53 @@ Die mitgelieferten Tools stehen in `src/Resources/public/swag-web-mcp.js` im
 Erweiterungen per `unregisterTool(name)` entfernen oder per gleichnamigem
 `registerTool(...)` überschreiben.
 
+## Begleit-Plugin: B2B Commerce (`SwagWebMcpB2b`)
+
+Im Ordner [`SwagWebMcpB2b/`](SwagWebMcpB2b/) liegt ein eigenständiges
+Begleit-Plugin, das die WebMCP-Schnittstelle um Tools für **Shopware B2B
+Commerce** erweitert:
+
+| Tool | Zweck |
+| --- | --- |
+| `b2b_list_quotes` | Angebote (Quotes) des B2B-Kontos auflisten |
+| `b2b_get_quote` | Angebotsdetails inkl. Positionen |
+| `b2b_request_quote` | Aus dem Warenkorb eine Angebotsanfrage erstellen |
+| `b2b_decline_quote` | Angebot ablehnen |
+| `b2b_request_quote_changes` | Änderungen an einem Angebot anfordern |
+| `b2b_list_employees` | Employees (Mitarbeiter) des B2B-Kontos auflisten |
+| `b2b_list_organization_units` | Organisationseinheiten auflisten |
+
+Es klinkt sich ausschließlich über die Erweiterungs-API von `SwagWebMcp` ein
+(kein Eingriff in den Core) und setzt dessen Aktivierung voraus
+(`composer`-Abhängigkeit `swag/web-mcp`).
+
+**Selbst-adaptiv statt fest verdrahtet:** Da bei B2B Commerce je nach
+installierter Version und Employee-Rolle nicht alle Funktionen verfügbar sind,
+prüft jedes Tool seine Verfügbarkeit über einen einmaligen lesenden Probe-Aufruf
+seiner Route. Liefert die Route 401/403/404, wird das Tool dem Agenten gar nicht
+erst angeboten. So passt sich das Plugin automatisch an den jeweiligen Shop und
+die Berechtigungen an.
+
+> **Routen verifizieren:** Die B2B-Store-API gehört zum Closed-Source-
+> Commercial-Plugin; Routen können je Version abweichen. Alle Pfade liegen
+> zentral in der `ROUTES`-Map in `SwagWebMcpB2b/src/Resources/public/swag-web-mcp-b2b.js`
+> und sind dort an die eigene Version anpassbar. Durch die Probe-basierte
+> Verfügbarkeit führt ein abweichender Pfad nicht zu Fehlern, sondern lediglich
+> dazu, dass das betroffene Tool ausgeblendet bleibt.
+
+Installation (zusätzlich zum Basis-Plugin):
+
+```bash
+bin/console plugin:refresh
+bin/console plugin:install --activate SwagWebMcpB2b
+bin/console assets:install && bin/console cache:clear
+```
+
 ## Kompatibilität
 
 - Shopware 6.5 / 6.6 / 6.7
-- Tools nutzen ausschließlich öffentliche Store-API-Routen.
+- Basis-Tools nutzen ausschließlich öffentliche Store-API-Routen.
+- B2B-Tools setzen das Commercial-Plugin (B2B Commerce) voraus.
 
 ## Lizenz
 
