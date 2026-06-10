@@ -8,6 +8,15 @@
     Der Access-Key und das Context-Token stammen aus dem aktuellen
     SalesChannelContext ("context"), der in Storefront-Templates verfuegbar ist.
     Damit operieren die Store-API-Aufrufe auf demselben Warenkorb wie die Session.
+
+    ERWEITERBARKEIT
+    ---------------
+    - Server-seitig: Andere Plugins koennen den Block
+      "swag_web_mcp_config_extend" ueberschreiben und so zusaetzliche Felder an
+      window.swagWebMcpConfig haengen (z. B. B2B-Flags, Employee-Berechtigungen),
+      ohne diese Datei zu ersetzen.
+    - Client-seitig: Andere Plugins registrieren ihre eigenen Tools ueber die
+      Command-Queue window.SwagWebMcp.push(function (mcp) { mcp.registerTool(...) }).
 #}
 {% block base_body_inner %}
     {{ parent() }}
@@ -18,8 +27,12 @@
             accessKey: '{{ context.salesChannel.accessKey|e('js') }}',
             contextToken: '{{ context.token|e('js') }}',
             salesChannelName: '{{ context.salesChannel.translated.name|default(context.salesChannel.name)|e('js') }}',
-            currencyCode: '{{ context.currency.isoCode|e('js') }}'
+            currencyCode: '{{ context.currency.isoCode|e('js') }}',
+            loggedIn: {{ context.customer ? 'true' : 'false' }}
         };
+
+        {# Erweiterungspunkt: andere Plugins fuellen hier z. B. B2B-Kontext nach. #}
+        {% block swag_web_mcp_config_extend %}{% endblock %}
     </script>
     <script src="{{ asset('bundles/swagwebmcp/swag-web-mcp.js') }}" defer></script>
 {% endblock %}

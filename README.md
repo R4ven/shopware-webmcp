@@ -68,19 +68,19 @@ bin/console plugin:install --activate SwagWebMcp
 Storefront öffnen, Browser-Konsole prüfen – dort erscheint:
 
 ```
-[WebMCP] 7 Tools für Agenten registriert: search_products, get_product, ...
+[WebMCP] 7 Tools aktiv: search_products, get_product, ...
 ```
 
 Direkt in der Konsole testen:
 
 ```js
 // Tools auflisten
-navigator.modelContext._tools // (Polyfill) bzw. window.swagWebMcp.tools
+window.SwagWebMcp.getTools();
 
 // Tool manuell aufrufen
-await window.swagWebMcp.callTool('search_products', { query: 'Notebook', limit: 5 });
-await window.swagWebMcp.callTool('add_to_cart', { productId: '<id>', quantity: 1 });
-await window.swagWebMcp.callTool('get_cart', {});
+await window.SwagWebMcp.callTool('search_products', { query: 'Notebook', limit: 5 });
+await window.SwagWebMcp.callTool('add_to_cart', { productId: '<id>', quantity: 1 });
+await window.SwagWebMcp.callTool('get_cart', {});
 ```
 
 Auf das `webmcp:ready`-Event hören:
@@ -89,12 +89,70 @@ Auf das `webmcp:ready`-Event hören:
 window.addEventListener('webmcp:ready', (e) => console.log('Tools:', e.detail.tools));
 ```
 
-## Anpassen / Erweitern
+## Erweiterung durch andere Plugins (B2B etc.)
 
-Weitere Tools fügst du in `src/Resources/public/swag-web-mcp.js` im
-`tools`-Array hinzu (jeweils `name`, `description`, `inputSchema` und eine
-`run(args)`-Funktion, die ein Promise mit dem Ergebnis liefert). Die WebMCP-
-Verdrahtung und Fehlerbehandlung passieren generisch darum herum.
+Das Funktionsset unterscheidet sich je nach Kunde — z. B. Shopware **B2B
+Commerce** mit Employees, bei denen je nach Rolle nicht alle Funktionen
+verfügbar sind. Deshalb ist die MCP-Schnittstelle **erweiterbar**: Andere
+Plugins steuern eigene Tools bei, ohne dieses Plugin zu ändern.
+
+### Client-seitig: Tools registrieren (Command-Queue)
+
+Ladereihenfolge-unabhängig über `window.SwagWebMcp.push(...)`:
+
+```js
+(window.SwagWebMcp = window.SwagWebMcp || []).push(function (mcp) {
+    mcp.registerTool({
+        name: 'b2b_request_quote',
+        description: 'Wandelt den Warenkorb in eine Angebotsanfrage um.',
+        inputSchema: { type: 'object', properties: { comment: { type: 'string' } } },
+        // Optionales Gate: Tool erscheint nur, wenn verfügbar/berechtigt.
+        isAvailable: function () { return mcp.config.b2b && mcp.config.b2b.enabled; },
+        run: function (args) { return mcp.storeApi('POST', '/quote/request', args); }
+    });
+});
+```
+
+Die `mcp`-API bietet:
+
+| Methode | Zweck |
+| --- | --- |
+| `registerTool(spec)` | Tool hinzufügen (ersetzt gleichnamiges); gibt eine Unregister-Funktion zurück |
+| `unregisterTool(name)` | Tool entfernen — **auch Core-Tools** (z. B. `add_to_cart` in reiner B2B-Storefront) |
+| `getTools()` | Namen aller registrierten Tools |
+| `callTool(name, args)` | Tool manuell ausführen |
+| `refresh()` | `isAvailable`-Gates neu auswerten und neu publizieren (z. B. nach Login) |
+| `storeApi(method, path, body)` | Store-API-Aufruf mit identischer Auth-/Context-Token-Logik |
+| `config` | `window.swagWebMcpConfig` inkl. der von Plugins ergänzten Felder |
+
+**Bedingte Verfügbarkeit:** Mit `isAvailable()` (sync oder Promise) blendest du
+Tools je nach B2B-Rolle/Berechtigung ein oder aus. Nur verfügbare Tools werden
+an den Agenten publiziert.
+
+Ein vollständiges, kopierbares Beispiel liegt in
+[`examples/b2b-extension.example.js`](examples/b2b-extension.example.js).
+
+### Server-seitig: B2B-Kontext in die Config geben
+
+Ein anderes Plugin kann den Twig-Block `swag_web_mcp_config_extend` überschreiben
+und so z. B. Berechtigungen mitgeben, ohne das Base-Template zu ersetzen:
+
+```twig
+{% sw_extends '@Storefront/storefront/base.html.twig' %}
+{% block swag_web_mcp_config_extend %}
+    window.swagWebMcpConfig.b2b = {
+        enabled: {{ b2bActive ? 'true' : 'false' }},
+        permissions: {{ employeePermissions|json_encode|raw }}
+    };
+{% endblock %}
+```
+
+### Eigene Core-Tools anpassen
+
+Die mitgelieferten Tools stehen in `src/Resources/public/swag-web-mcp.js` im
+`coreTools`-Array und durchlaufen dieselbe Registry — sie lassen sich also von
+Erweiterungen per `unregisterTool(name)` entfernen oder per gleichnamigem
+`registerTool(...)` überschreiben.
 
 ## Kompatibilität
 

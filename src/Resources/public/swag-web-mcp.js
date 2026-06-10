@@ -1,16 +1,40 @@
 /**
- * Shopware Storefront WebMCP Bootstrap
- * ------------------------------------
+ * Shopware Storefront WebMCP Bootstrap + Erweiterungs-API
+ * -------------------------------------------------------
  * Registriert beim Laden der Seite eine Reihe von MCP-Tools ueber die
  * WebMCP-API (navigator.modelContext), sodass jeder Browser-Agent im Shop
  * sofort eine fertige Schnittstelle zum Suchen, Stoebern und Bestellen hat.
  *
- * Die Tools rufen im Hintergrund die Shopware Store-API auf und arbeiten dabei
- * auf demselben Warenkorb/Context wie die laufende Session.
+ * ERWEITERBARKEIT
+ * ---------------
+ * Andere Plugins (z. B. B2B-Commerce) koennen eigene Tools beisteuern, ohne
+ * diese Datei zu aendern. Ueber eine Command-Queue ist das ladereihenfolge-
+ * unabhaengig:
+ *
+ *     (window.SwagWebMcp = window.SwagWebMcp || []).push(function (mcp) {
+ *         mcp.registerTool({
+ *             name: 'b2b_request_quote',
+ *             description: '...',
+ *             inputSchema: { type: 'object', properties: { ... } },
+ *             // Optionales Gate: Tool erscheint nur, wenn verfuegbar/berechtigt.
+ *             isAvailable: function () { return mcp.config.b2b === true; },
+ *             // Bekommt Argumente, liefert ein Promise mit dem Ergebnis.
+ *             run: function (args) { return mcp.storeApi('POST', '/...', args); }
+ *         });
+ *     });
+ *
+ * mcp stellt dabei bereit:
+ *   - registerTool(spec)         Tool hinzufuegen (ersetzt gleichnamiges Tool)
+ *   - unregisterTool(name)       Tool entfernen (auch Core-Tools)
+ *   - getTools()                 Namen aller registrierten Tools
+ *   - callTool(name, args)       Tool manuell ausfuehren
+ *   - refresh()                  Verfuegbarkeit neu auswerten + neu publizieren
+ *   - storeApi(method, path, body)  Store-API-Aufruf mit Auth/Context-Token
+ *   - config                     window.swagWebMcpConfig (inkl. Plugin-Felder)
  *
  * Falls der Browser/Agent die WebMCP-API noch nicht nativ unterstuetzt, wird
  * ein leichtgewichtiges Polyfill installiert, das die Tools trotzdem unter
- * navigator.modelContext und window.swagWebMcp auffindbar macht.
+ * navigator.modelContext und window.SwagWebMcp auffindbar macht.
  */
 (function () {
     'use strict';
@@ -18,7 +42,6 @@
     var config = window.swagWebMcpConfig || {};
 
     if (!config.storeApiUrl || !config.accessKey) {
-        // Ohne Store-API-Zugang koennen wir nichts ausliefern.
         console.warn('[WebMCP] Fehlende Konfiguration (storeApiUrl/accessKey) – Tools werden nicht registriert.');
         return;
     }
@@ -27,7 +50,8 @@
     var contextToken = config.contextToken || null;
 
     /**
-     * Schlanker Fetch-Wrapper fuer die Store-API.
+     * Schlanker Fetch-Wrapper fuer die Store-API. Auch fuer Erweiterungs-Tools
+     * nutzbar (mcp.storeApi), damit diese dieselbe Auth/Context-Logik bekommen.
      */
     function storeApi(method, path, body) {
         var headers = {
@@ -49,7 +73,6 @@
         }
 
         return fetch(config.storeApiUrl + path, options).then(function (response) {
-            // Aktualisiertes Context-Token uebernehmen (z. B. nach erster Cart-Aenderung).
             var token = response.headers.get('sw-context-token');
             if (token) {
                 contextToken = token;
@@ -143,9 +166,11 @@
         };
     }
 
-    // --- Tool-Definitionen ---------------------------------------------------
+    // --- Standard-Tools (Core) ----------------------------------------------
+    // Diese werden ueber dieselbe Registry wie Erweiterungs-Tools eingespielt,
+    // koennen also von Plugins per unregisterTool(name) auch entfernt werden.
 
-    var tools = [
+    var coreTools = [
         {
             name: 'search_products',
             description: 'Sucht Produkte im Shop anhand eines Suchbegriffs und liefert Name, Preis und Produkt-ID.',
@@ -289,11 +314,12 @@
         }
     ];
 
-    // --- WebMCP-Verdrahtung ---------------------------------------------------
+    // --- Registry & WebMCP-Verdrahtung ---------------------------------------
 
-    /**
-     * Verpackt das Ergebnis einer Tool-Ausfuehrung ins WebMCP-Antwortformat.
-     */
+    // Liste der Tool-Spezifikationen (Core + Erweiterungen). Jede Spec bekommt
+    // unter __webmcp ihr fertig gebautes WebMCP-Tool-Objekt.
+    var registry = [];
+
     function toToolResult(data) {
         return {
             content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
@@ -309,28 +335,49 @@
     }
 
     /**
-     * Baut eine WebMCP-Tool-Definition mit async execute() aus unserer Tool-Spezifikation.
+     * Baut aus einer Tool-Spezifikation das WebMCP-Tool-Objekt mit async execute().
+     * Unterstuetzt sowohl run() (vereinfachtes Ergebnis-Promise) als auch ein
+     * bereits fertiges execute() (volles WebMCP-Format).
      */
-    function toWebMcpTool(spec) {
+    function buildWebMcpTool(spec) {
+        var execute = typeof spec.execute === 'function'
+            ? spec.execute
+            : function (args) {
+                return Promise.resolve()
+                    .then(function () { return spec.run(args || {}); })
+                    .then(toToolResult)
+                    .catch(toToolError);
+            };
+
         return {
             name: spec.name,
             description: spec.description,
-            inputSchema: spec.inputSchema,
-            execute: function (args) {
-                return Promise.resolve()
-                    .then(function () {
-                        return spec.run(args || {});
-                    })
-                    .then(toToolResult)
-                    .catch(toToolError);
-            }
+            inputSchema: spec.inputSchema || { type: 'object', properties: {} },
+            execute: execute
         };
     }
 
-    /**
-     * Stellt navigator.modelContext sicher – nutzt die native API oder installiert
-     * ein minimales Polyfill, damit die Tools auffindbar bleiben.
-     */
+    function internalRegister(spec) {
+        if (!spec || typeof spec.name !== 'string' || !spec.name) {
+            console.warn('[WebMCP] Tool ohne gueltigen Namen ignoriert.', spec);
+            return;
+        }
+        if (typeof spec.run !== 'function' && typeof spec.execute !== 'function') {
+            console.warn('[WebMCP] Tool "' + spec.name + '" ohne run()/execute() ignoriert.');
+            return;
+        }
+        spec.__webmcp = buildWebMcpTool(spec);
+
+        // Gleichnamiges Tool ersetzen (erlaubt Override durch andere Plugins).
+        for (var i = 0; i < registry.length; i++) {
+            if (registry[i].name === spec.name) {
+                registry[i] = spec;
+                return;
+            }
+        }
+        registry.push(spec);
+    }
+
     function ensureModelContext() {
         if (navigator.modelContext) {
             return navigator.modelContext;
@@ -372,44 +419,133 @@
         return navigator.modelContext || polyfill;
     }
 
-    var webMcpTools = tools.map(toWebMcpTool);
     var modelContext = ensureModelContext();
+    var activeUnregister = [];
 
-    // Bevorzugt provideContext (deklariert das gesamte Tool-Set auf einmal),
-    // faellt sonst auf einzelne registerTool-Aufrufe zurueck.
-    try {
-        if (typeof modelContext.provideContext === 'function') {
-            modelContext.provideContext({ tools: webMcpTools });
-        } else if (typeof modelContext.registerTool === 'function') {
-            webMcpTools.forEach(function (tool) {
-                modelContext.registerTool(tool);
-            });
+    function applyToModelContext(toolObjects) {
+        try {
+            if (typeof modelContext.provideContext === 'function') {
+                modelContext.provideContext({ tools: toolObjects });
+            } else if (typeof modelContext.registerTool === 'function') {
+                activeUnregister.forEach(function (fn) {
+                    try { fn(); } catch (e) { /* ignorieren */ }
+                });
+                activeUnregister = toolObjects.map(function (tool) {
+                    return modelContext.registerTool(tool) || function () {};
+                });
+            }
+        } catch (e) {
+            console.error('[WebMCP] Konnte Tools nicht publizieren:', e);
         }
-    } catch (e) {
-        console.error('[WebMCP] Konnte Tools nicht registrieren:', e);
     }
 
-    // Zusaetzlicher, einfacher Zugriffspunkt fuer Agenten/Erweiterungen, die
-    // (noch) nicht auf navigator.modelContext setzen.
-    window.swagWebMcp = {
-        version: '1.0.0',
-        tools: webMcpTools,
-        config: { salesChannelName: config.salesChannelName, currencyCode: config.currencyCode },
-        callTool: function (name, args) {
-            var match = webMcpTools.filter(function (tool) {
-                return tool.name === name;
-            })[0];
-            if (!match) {
-                return Promise.reject(new Error('Unbekanntes Tool: ' + name));
+    var publishScheduled = false;
+
+    function schedulePublish() {
+        if (publishScheduled) {
+            return;
+        }
+        publishScheduled = true;
+        Promise.resolve().then(function () {
+            publishScheduled = false;
+            publish();
+        });
+    }
+
+    function publish() {
+        // Verfuegbarkeit jeder Spec auswerten (optionales isAvailable-Gate).
+        var checks = registry.map(function (spec) {
+            if (typeof spec.isAvailable !== 'function') {
+                return Promise.resolve({ spec: spec, ok: true });
             }
-            return match.execute(args || {});
+            return Promise.resolve()
+                .then(function () { return spec.isAvailable(); })
+                .then(function (ok) { return { spec: spec, ok: !!ok }; })
+                .catch(function () { return { spec: spec, ok: false }; });
+        });
+
+        Promise.all(checks).then(function (results) {
+            var active = results
+                .filter(function (r) { return r.ok; })
+                .map(function (r) { return r.spec.__webmcp; });
+
+            applyToModelContext(active);
+
+            var names = active.map(function (tool) { return tool.name; });
+            window.dispatchEvent(new CustomEvent('webmcp:ready', { detail: { tools: names } }));
+            console.info('[WebMCP] ' + names.length + ' Tools aktiv: ' + names.join(', '));
+        });
+    }
+
+    // --- Oeffentliche Erweiterungs-API + Command-Queue -----------------------
+
+    var api = {
+        version: '1.1.0',
+        config: config,
+        storeApi: storeApi,
+        registerTool: function (spec) {
+            internalRegister(spec);
+            schedulePublish();
+            var name = spec && spec.name;
+            return function unregister() {
+                api.unregisterTool(name);
+            };
+        },
+        unregisterTool: function (name) {
+            for (var i = 0; i < registry.length; i++) {
+                if (registry[i].name === name) {
+                    registry.splice(i, 1);
+                    schedulePublish();
+                    return true;
+                }
+            }
+            return false;
+        },
+        getTools: function () {
+            return registry.map(function (spec) { return spec.name; });
+        },
+        callTool: function (name, args) {
+            for (var i = 0; i < registry.length; i++) {
+                if (registry[i].name === name) {
+                    return registry[i].__webmcp.execute(args || {});
+                }
+            }
+            return Promise.reject(new Error('Unbekanntes Tool: ' + name));
+        },
+        refresh: function () {
+            schedulePublish();
+        },
+        // Command-Queue-Schnittstelle: fuehrt Callback sofort mit der API aus.
+        push: function (callback) {
+            if (typeof callback === 'function') {
+                try {
+                    callback(api);
+                } catch (e) {
+                    console.error('[WebMCP] Fehler in Erweiterungs-Callback:', e);
+                }
+            }
+            return api;
         }
     };
 
-    window.dispatchEvent(new CustomEvent('webmcp:ready', {
-        detail: { tools: webMcpTools.map(function (tool) { return tool.name; }) }
-    }));
+    // Eventuell vor dem Core geladene Erweiterungen standen als Array-Queue bereit.
+    var pending = window.SwagWebMcp;
+    window.SwagWebMcp = api;
+    window.swagWebMcp = api; // Alias (Abwaertskompatibilitaet)
 
-    console.info('[WebMCP] ' + webMcpTools.length + ' Tools fuer Agenten registriert:',
-        webMcpTools.map(function (tool) { return tool.name; }).join(', '));
+    // Core-Tools registrieren.
+    coreTools.forEach(internalRegister);
+
+    // Gepufferte Erweiterungs-Callbacks abarbeiten.
+    if (pending && typeof pending.length === 'number') {
+        Array.prototype.slice.call(pending).forEach(function (callback) {
+            api.push(callback);
+        });
+    }
+
+    // Signalisiert Erweiterungen, die ueber Events arbeiten, dass die API bereit ist.
+    window.dispatchEvent(new CustomEvent('swag-web-mcp:ready', { detail: { mcp: api } }));
+
+    // Erste Publikation (nach Microtask, damit synchron nachgeladene Tools mit rein kommen).
+    schedulePublish();
 })();
