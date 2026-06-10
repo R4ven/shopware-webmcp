@@ -1,0 +1,25 @@
+{% sw_extends '@Storefront/storefront/base.html.twig' %}
+
+{#
+    Wir haengen uns ans Ende des Body und injizieren:
+      1. Die Laufzeit-Konfiguration (Store-API-URL, Access-Key, Context-Token) als JSON.
+      2. Das WebMCP-Bootstrap-Skript, das daraus die Agenten-Tools registriert.
+
+    Der Access-Key und das Context-Token stammen aus dem aktuellen
+    SalesChannelContext ("context"), der in Storefront-Templates verfuegbar ist.
+    Damit operieren die Store-API-Aufrufe auf demselben Warenkorb wie die Session.
+#}
+{% block base_body_inner %}
+    {{ parent() }}
+
+    <script>
+        window.swagWebMcpConfig = {
+            storeApiUrl: '{{ (app.request.schemeAndHttpHost ~ app.request.basePath ~ '/store-api')|e('js') }}',
+            accessKey: '{{ context.salesChannel.accessKey|e('js') }}',
+            contextToken: '{{ context.token|e('js') }}',
+            salesChannelName: '{{ context.salesChannel.translated.name|default(context.salesChannel.name)|e('js') }}',
+            currencyCode: '{{ context.currency.isoCode|e('js') }}'
+        };
+    </script>
+    <script src="{{ asset('bundles/swagwebmcp/swag-web-mcp.js') }}" defer></script>
+{% endblock %}
