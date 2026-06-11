@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/platform/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
+
+    <card>
+        <title>WebMCP – Agent tools</title>
+        <title lang="de-DE">WebMCP – Agenten-Tools</title>
+
+        <input-field type="bool">
+            <name>schemaDriven</name>
+            <label>Generate tools from the Store API schema</label>
+            <label lang="de-DE">Tools aus dem Store-API-Schema generieren</label>
+            <helpText>Builds MCP tools automatically from /store-api/_info/openapi3.json. Picks up every route the shop exposes, including installed plugins (e.g. B2B Commerce).</helpText>
+            <helpText lang="de-DE">Erzeugt MCP-Tools automatisch aus /store-api/_info/openapi3.json. Erfasst jede vom Shop bereitgestellte Route, inkl. installierter Plugins (z. B. B2B Commerce).</helpText>
+            <defaultValue>true</defaultValue>
+        </input-field>
+
+        <input-field type="textarea">
+            <name>allowlist</name>
+            <label>Allowlist (one pattern per line; empty = all operations)</label>
+            <label lang="de-DE">Allowlist (ein Muster pro Zeile; leer = alle Operationen)</label>
+            <helpText>Only operations matching at least one pattern are exposed. Patterns are matched (case-insensitive) against the operationId, the path, and "METHOD path". Use * as wildcard, e.g. "*quote*" or "/product*".</helpText>
+            <helpText lang="de-DE">Nur Operationen, die mindestens einem Muster entsprechen, werden angeboten. Abgleich (ohne Gross-/Kleinschreibung) gegen operationId, Pfad und "METHODE pfad". * als Platzhalter, z. B. "*quote*" oder "/product*".</helpText>
+        </input-field>
+
+        <input-field type="textarea">
+            <name>denylist</name>
+            <label>Denylist (one pattern per line)</label>
+            <label lang="de-DE">Denylist (ein Muster pro Zeile)</label>
+            <helpText>Operations matching any of these patterns are removed (applied after the allowlist). Same matching rules as the allowlist.</helpText>
+            <helpText lang="de-DE">Operationen, die einem dieser Muster entsprechen, werden entfernt (nach der Allowlist angewendet). Gleiche Abgleichregeln wie bei der Allowlist.</helpText>
+            <defaultValue>*login*
+*logout*
+*register*
+*password*
+*recovery*
+*newsletter*</defaultValue>
+        </input-field>
+
+        <input-field type="bool">
+            <name>includeMutations</name>
+            <label>Include mutating methods (PUT / PATCH / DELETE)</label>
+            <label lang="de-DE">Verändernde Methoden einbeziehen (PUT / PATCH / DELETE)</label>
+            <helpText>When disabled, only GET and POST operations are exposed (most Store API reads use POST). Enable to also allow PUT/PATCH/DELETE.</helpText>
+            <helpText lang="de-DE">Wenn deaktiviert, werden nur GET- und POST-Operationen angeboten (die meisten Store-API-Lesezugriffe nutzen POST). Aktivieren, um auch PUT/PATCH/DELETE zuzulassen.</helpText>
+            <defaultValue>false</defaultValue>
+        </input-field>
+
+        <input-field type="int">
+            <name>maxTools</name>
+            <label>Maximum number of generated tools</label>
+            <label lang="de-DE">Maximale Anzahl generierter Tools</label>
+            <helpText>Safety cap so an agent is not flooded with hundreds of tools.</helpText>
+            <helpText lang="de-DE">Sicherheitslimit, damit ein Agent nicht mit hunderten Tools überflutet wird.</helpText>
+            <defaultValue>100</defaultValue>
+        </input-field>
+    </card>
+</config>
