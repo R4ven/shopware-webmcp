@@ -1,0 +1,32 @@
+{
+    "name": "swag/web-mcp-b2b",
+    "description": "Begleit-Plugin zu swag/web-mcp: stellt zusaetzliche WebMCP-Tools fuer Shopware B2B Commerce bereit (Quote-Management, Employees, Organisationseinheiten). Tools werden nur angeboten, wenn die jeweilige B2B-Funktion fuer den angemeldeten Employee verfuegbar ist.",
+    "version": "1.0.0",
+    "type": "shopware-platform-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Stefan Jaeger"
+        }
+    ],
+    "require": {
+        "shopware/core": "~6.5 || ~6.6 || ~6.7",
+        "swag/web-mcp": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Swag\\WebMcpB2b\\": "src/"
+        }
+    },
+    "extra": {
+        "shopware-plugin-class": "Swag\\WebMcpB2b\\SwagWebMcpB2b",
+        "label": {
+            "de-DE": "WebMCP B2B Commerce Tools",
+            "en-GB": "WebMCP B2B Commerce tools"
+        },
+        "description": {
+            "de-DE": "Ergaenzt die WebMCP-Schnittstelle um B2B-Commerce-Tools (Quotes, Employees, Organisationseinheiten).",
+            "en-GB": "Adds B2B Commerce tools (quotes, employees, organization units) to the WebMCP interface."
+        }
+    }
+}

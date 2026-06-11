@@ -1,0 +1,31 @@
+{
+    "name": "swag/web-mcp",
+    "description": "Stellt im Shopware Storefront eine fertige WebMCP-Schnittstelle (navigator.modelContext) bereit, damit Browser-KI-Agenten den Shop bedienen können (Suche, Warenkorb, Kategorien, Checkout).",
+    "version": "1.0.0",
+    "type": "shopware-platform-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Stefan Jaeger"
+        }
+    ],
+    "require": {
+        "shopware/core": "~6.5 || ~6.6 || ~6.7"
+    },
+    "autoload": {
+        "psr-4": {
+            "Swag\\WebMcp\\": "src/"
+        }
+    },
+    "extra": {
+        "shopware-plugin-class": "Swag\\WebMcp\\SwagWebMcp",
+        "label": {
+            "de-DE": "WebMCP Schnittstelle fuer Agenten",
+            "en-GB": "WebMCP interface for agents"
+        },
+        "description": {
+            "de-DE": "Macht den Storefront ueber WebMCP fuer KI-Agenten bedienbar.",
+            "en-GB": "Exposes the storefront to AI agents via WebMCP."
+        }
+    }
+}
