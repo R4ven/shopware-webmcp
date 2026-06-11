@@ -2,20 +2,26 @@
 
 {#
     Wir haengen uns ans Ende des Body und injizieren:
-      1. Die Laufzeit-Konfiguration (Store-API-URL, Access-Key, Context-Token) als JSON.
-      2. Das WebMCP-Bootstrap-Skript, das daraus die Agenten-Tools registriert.
+      1. Die Laufzeit-Konfiguration als JSON: Store-API-Zugang (URL, Access-Key,
+         Context-Token) sowie die im Admin gepflegten Plugin-Einstellungen
+         (Schema-Modus, Allow-/Denylist, Mutations-Schalter, Tool-Limit).
+      2. Das WebMCP-Bootstrap-Skript, das daraus die Agenten-Tools generiert.
 
     Der Access-Key und das Context-Token stammen aus dem aktuellen
     SalesChannelContext ("context"), der in Storefront-Templates verfuegbar ist.
     Damit operieren die Store-API-Aufrufe auf demselben Warenkorb wie die Session.
 
+    Die Plugin-Einstellungen kommen ueber die Twig-Funktion config() und sind
+    pro Sales-Channel im Admin konfigurierbar. Werte werden via json_encode als
+    echte JS-Literale ausgegeben (true/false/null/string/number); fehlende Werte
+    (null) faengt das Skript mit Defaults ab.
+
     ERWEITERBARKEIT
     ---------------
     - Server-seitig: Andere Plugins koennen den Block
       "swag_web_mcp_config_extend" ueberschreiben und so zusaetzliche Felder an
-      window.swagWebMcpConfig haengen (z. B. B2B-Flags, Employee-Berechtigungen),
-      ohne diese Datei zu ersetzen.
-    - Client-seitig: Andere Plugins registrieren ihre eigenen Tools ueber die
+      window.swagWebMcpConfig haengen.
+    - Client-seitig: Andere Plugins registrieren eigene Tools ueber die
       Command-Queue window.SwagWebMcp.push(function (mcp) { mcp.registerTool(...) }).
 #}
 {% block base_body_inner %}
@@ -28,10 +34,16 @@
             contextToken: '{{ context.token|e('js') }}',
             salesChannelName: '{{ context.salesChannel.translated.name|default(context.salesChannel.name)|e('js') }}',
             currencyCode: '{{ context.currency.isoCode|e('js') }}',
-            loggedIn: {{ context.customer ? 'true' : 'false' }}
+            loggedIn: {{ context.customer ? 'true' : 'false' }},
+
+            schemaDriven: {{ config('SwagWebMcp.config.schemaDriven')|json_encode|raw }},
+            allowlist: {{ config('SwagWebMcp.config.allowlist')|json_encode|raw }},
+            denylist: {{ config('SwagWebMcp.config.denylist')|json_encode|raw }},
+            includeMutations: {{ config('SwagWebMcp.config.includeMutations')|json_encode|raw }},
+            maxTools: {{ config('SwagWebMcp.config.maxTools')|json_encode|raw }}
         };
 
-        {# Erweiterungspunkt: andere Plugins fuellen hier z. B. B2B-Kontext nach. #}
+        {# Erweiterungspunkt: andere Plugins fuellen hier z. B. weiteren Kontext nach. #}
         {% block swag_web_mcp_config_extend %}{% endblock %}
     </script>
     <script src="{{ asset('bundles/swagwebmcp/swag-web-mcp.js') }}" defer></script>
